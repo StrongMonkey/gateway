@@ -11,13 +11,20 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-type contextKeyType struct{}
+type (
+	contextKeyType        struct{}
+	contextClientsKeyType struct{}
+)
 
 type Interface interface {
 	RESTClient() rest.Interface
 	controller.Starter
 
-	FoosGetter
+	GatewayDestinationsGetter
+}
+
+type Clients struct {
+	GatewayDestination GatewayDestinationClient
 }
 
 type Client struct {
@@ -25,7 +32,7 @@ type Client struct {
 	restClient rest.Interface
 	starters   []controller.Starter
 
-	fooControllers map[string]FooController
+	gatewayDestinationControllers map[string]GatewayDestinationController
 }
 
 func Factory(ctx context.Context, config rest.Config) (context.Context, controller.Starter, error) {
@@ -34,11 +41,36 @@ func Factory(ctx context.Context, config rest.Config) (context.Context, controll
 		return ctx, nil, err
 	}
 
-	return context.WithValue(ctx, contextKeyType{}, c), c, nil
+	cs := NewClientsFromInterface(c)
+
+	ctx = context.WithValue(ctx, contextKeyType{}, c)
+	ctx = context.WithValue(ctx, contextClientsKeyType{}, cs)
+	return ctx, c, nil
+}
+
+func ClientsFrom(ctx context.Context) *Clients {
+	return ctx.Value(contextClientsKeyType{}).(*Clients)
 }
 
 func From(ctx context.Context) Interface {
 	return ctx.Value(contextKeyType{}).(Interface)
+}
+
+func NewClients(config rest.Config) (*Clients, error) {
+	iface, err := NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	return NewClientsFromInterface(iface), nil
+}
+
+func NewClientsFromInterface(iface Interface) *Clients {
+	return &Clients{
+
+		GatewayDestination: &gatewayDestinationClient2{
+			iface: iface.GatewayDestinations(""),
+		},
+	}
 }
 
 func NewForConfig(config rest.Config) (Interface, error) {
@@ -54,7 +86,7 @@ func NewForConfig(config rest.Config) (Interface, error) {
 	return &Client{
 		restClient: restClient,
 
-		fooControllers: map[string]FooController{},
+		gatewayDestinationControllers: map[string]GatewayDestinationController{},
 	}, nil
 }
 
@@ -70,13 +102,13 @@ func (c *Client) Start(ctx context.Context, threadiness int) error {
 	return controller.Start(ctx, threadiness, c.starters...)
 }
 
-type FoosGetter interface {
-	Foos(namespace string) FooInterface
+type GatewayDestinationsGetter interface {
+	GatewayDestinations(namespace string) GatewayDestinationInterface
 }
 
-func (c *Client) Foos(namespace string) FooInterface {
-	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &FooResource, FooGroupVersionKind, fooFactory{})
-	return &fooClient{
+func (c *Client) GatewayDestinations(namespace string) GatewayDestinationInterface {
+	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &GatewayDestinationResource, GatewayDestinationGroupVersionKind, gatewayDestinationFactory{})
+	return &gatewayDestinationClient{
 		ns:           namespace,
 		client:       c,
 		objectClient: objectClient,

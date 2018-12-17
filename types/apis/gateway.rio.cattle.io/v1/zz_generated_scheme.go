@@ -33,8 +33,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	// TODO this gets cleaned up when the types are fixed
 	scheme.AddKnownTypes(SchemeGroupVersion,
 
-		&Foo{},
-		&FooList{},
+		&GatewayDestination{},
+		&GatewayDestinationList{},
 	)
 	return nil
 }

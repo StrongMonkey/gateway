@@ -14,18 +14,22 @@ var (
 	}
 	Schemas = factory.
 		Schemas(&APIVersion).
-		MustImport(&APIVersion, Foo{})
+		MustImport(&APIVersion, GatewayDestination{})
 )
 
-type Foo struct {
+type GatewayDestination struct {
 	types.Namespaced
 
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec FooSpec `json:"spec"`
+	Spec GatewayDestinationSpec `json:"spec"`
 }
 
-type FooSpec struct {
-	Option bool `json:"option"`
+type GatewayDestinationSpec struct {
+	MatchHeader        map[string]string
+	MatchHost          string
+	MatchPath          string
+	DestServiceName    string
+	DestDeploymentName string
 }
