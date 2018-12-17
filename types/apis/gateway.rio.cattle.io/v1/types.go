@@ -8,7 +8,7 @@ import (
 
 var (
 	APIVersion = types.APIVersion{
-		Group:   "some.api.group",
+		Group:   "gateway.rio.cattle.io",
 		Version: "v1",
 		Path:    "/v1-someapi",
 	}
@@ -27,9 +27,10 @@ type GatewayDestination struct {
 }
 
 type GatewayDestinationSpec struct {
-	MatchHeader        map[string]string
-	MatchHost          string
-	MatchPath          string
-	DestServiceName    string
-	DestDeploymentName string
+	MatchHeader        map[string]string `json:"matchHeader,omitempty"`
+	MatchHost          string            `json:"matchHost,omitempty"`
+	MatchPath          string            `json:"matchPath,omitempty"`
+	DestServiceName    string            `json:"destServiceName,omitempty"`
+	DestNamespace      string            `json:"destNamespace,omitempty"`
+	DestDeploymentName string            `json:"destDeploymentName,omitempty"`
 }

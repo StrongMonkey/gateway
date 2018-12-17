@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	GroupName = "some.api.group"
+	GroupName = "gateway.rio.cattle.io"
 	Version   = "v1"
 )
 
