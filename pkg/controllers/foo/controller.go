@@ -3,7 +3,7 @@ package foo
 import (
 	"context"
 
-	"github.com/rancher/gateway/types/apis/some.api.group/v1"
+	"github.com/rancher/gateway/types/apis/gateway.rio.cattle.io/v1"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 )

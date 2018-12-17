@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/rancher/gateway/pkg/controllers/foo"
-	"github.com/rancher/gateway/types/apis/some.api.group/v1"
+	"github.com/rancher/gateway/types/apis/gateway.rio.cattle.io/v1"
 	"github.com/rancher/norman"
 	"github.com/rancher/norman/types"
 )
