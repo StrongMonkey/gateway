@@ -1,10 +1,12 @@
 package server
 
 import (
-	"context"
-
-	"github.com/rancher/gateway/pkg/controllers/foo"
+	"github.com/rancher/gateway/pkg/controllers/gateway"
+	gTypes "github.com/rancher/gateway/types"
+	appsv1 "github.com/rancher/gateway/types/apis/apps/v1beta2"
+	corev1 "github.com/rancher/gateway/types/apis/core/v1"
 	"github.com/rancher/gateway/types/apis/gateway.rio.cattle.io/v1"
+	"github.com/rancher/gateway/types/client/gateway/v1"
 	"github.com/rancher/norman"
 	"github.com/rancher/norman/types"
 )
@@ -18,18 +20,18 @@ func Config() *norman.Config {
 
 		CRDs: map[*types.APIVersion][]string{
 			&v1.APIVersion: {
-				v1.FooGroupVersionKind.Kind,
+				client.GatewayDestinationType,
 			},
 		},
 
 		Clients: []norman.ClientFactory{
 			v1.Factory,
+			appsv1.Factory,
+			corev1.Factory,
 		},
 
 		MasterControllers: []norman.ControllerRegister{
-			func(ctx context.Context) error {
-				return foo.Register(ctx, v1.From(ctx))
-			},
+			gTypes.Register(gateway.Register),
 		},
 	}
 }

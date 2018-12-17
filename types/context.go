@@ -3,12 +3,16 @@ package types
 import (
 	"context"
 
+	appsv1 "github.com/rancher/gateway/types/apis/apps/v1beta2"
+	corev1 "github.com/rancher/gateway/types/apis/core/v1"
 	"github.com/rancher/gateway/types/apis/gateway.rio.cattle.io/v1"
 )
 
 type contextKey struct{}
 
 type Context struct {
+	Apps    *appsv1.Clients
+	Core    *corev1.Clients
 	Gateway *v1.Clients
 }
 
@@ -23,6 +27,8 @@ func From(ctx context.Context) *Context {
 func NewContext(ctx context.Context) *Context {
 	return &Context{
 		Gateway: v1.ClientsFrom(ctx),
+		Apps:    appsv1.ClientsFrom(ctx),
+		Core:    corev1.ClientsFrom(ctx),
 	}
 }
 

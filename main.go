@@ -9,25 +9,19 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/proxy"
-
-	"github.com/rancher/gateway/controllers"
-	gTypes "github.com/rancher/gateway/types"
+	"github.com/rancher/gateway/pkg/controllers/gateway"
+	"github.com/rancher/gateway/pkg/server"
+	appsv1 "github.com/rancher/gateway/types/apis/apps/v1beta2"
 	"github.com/rancher/gateway/types/apis/gateway.rio.cattle.io/v1"
-	"github.com/rancher/gateway/types/client/gateway/v1"
 	"github.com/rancher/norman"
 	"github.com/rancher/norman/signal"
-	"github.com/rancher/norman/types"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/client-go/rest"
 )
 
@@ -59,7 +53,7 @@ func main() {
 	}
 }
 
-func run(c *cli.Context) error {
+func run() error {
 	logrus.Info("Starting controller")
 	ctx := signal.SigTermCancelContext(context.Background())
 
@@ -67,29 +61,13 @@ func run(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	normanConfig := server.Config()
 
-	normanConfig := &norman.Config{
-		Name: "gateway",
-		CRDs: map[*types.APIVersion][]string{
-			&v1.APIVersion: {
-				client.GatewayDestinationType,
-			},
-		},
-		Clients: []norman.ClientFactory{
-			v1.Factory,
-		},
-		Config:      config,
-		GlobalSetup: gTypes.BuildContext,
-		MasterControllers: []norman.ControllerRegister{
-			gTypes.Register(controllers.Register),
-		},
-	}
 	ctx, _, err = normanConfig.Build(ctx, &norman.Options{})
 	if err != nil {
 		return err
 	}
 
-	normanServer := norman.GetServer(ctx)
 	clients, err := v1.NewForConfig(*config)
 	if err != nil {
 		return err
@@ -97,8 +75,6 @@ func run(c *cli.Context) error {
 	cs := v1.NewClientsFromInterface(clients)
 	gatewayHandler := Handler{
 		gatewayDestLister: cs.GatewayDestination.Cache(),
-		appsV1:            normanServer.K8sClient.AppsV1(),
-		corev1:            normanServer.K8sClient.CoreV1(),
 	}
 
 	srv := &http.Server{
@@ -119,8 +95,8 @@ func run(c *cli.Context) error {
 
 type Handler struct {
 	gatewayDestLister v1.GatewayDestinationClientCache
-	appsV1            appsv1.AppsV1Interface
-	corev1            corev1.CoreV1Interface
+	deploymentLister  appsv1.DeploymentClientCache
+	deployments       appsv1.DeploymentInterface
 }
 
 func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -132,52 +108,44 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dep, err := h.appsV1.Deployments(gatewayDest.Spec.DestNamespace).Get(gatewayDest.Spec.DestDeploymentName, metav1.GetOptions{})
+	dep, err := h.deploymentLister.Get(gatewayDest.Spec.DestNamespace, gatewayDest.Spec.DestDeploymentName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	if dep.Spec.Replicas != nil && *dep.Spec.Replicas == 0 {
 		dep.Spec.Replicas = &[]int32{1}[0]
-		if _, err := h.appsV1.Deployments(gatewayDest.Spec.DestNamespace).Update(dep); err != nil {
+		if _, err := h.deployments.Update(dep); err != nil {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 	}
 
-	// waiting for service endpoint > 0, then return FQDN
-	service, err := h.corev1.Services(gatewayDest.Spec.DestNamespace).Get(gatewayDest.Spec.DestServiceName, metav1.GetOptions{})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	for i := 0; i < 15; i++ {
-		endpoint, err := h.corev1.Endpoints(gatewayDest.Spec.DestNamespace).Get(gatewayDest.Spec.DestServiceName, metav1.GetOptions{})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		if len(endpoint.Subsets) > 0 {
-			for _, port := range service.Spec.Ports {
-				if strconv.Itoa(int(port.Port)) == r.URL.Port() {
-					targetUrl := &url.URL{
-						Scheme: "http",
-						Host:   fmt.Sprintf("%s.%s.svc.cluster.local:%d", service.Name, service.Namespace, port.Port),
-					}
-					r.URL = targetUrl
-					r.Host = targetUrl.Host
-					httpProxy := proxy.NewUpgradeAwareHandler(targetUrl, nil, false, false, er)
-					httpProxy.ServeHTTP(w, r)
-					return
+	timer := time.After(time.Minute)
+
+	ch, ok := gateway.EndpointChanMap.Load(fmt.Sprintf("%s.%s", name, namespace))
+	if ok {
+		c := ch.(chan struct{})
+		select {
+		case <-timer:
+			http.Error(w, "timeout waiting for endpoint to be active", http.StatusGatewayTimeout)
+		case _, ok := <-c:
+			if !ok {
+				targetUrl := &url.URL{
+					Scheme: "http",
+					Host:   fmt.Sprintf("%s.%s.svc.cluster.local", name, namespace),
 				}
+				port := r.URL.Port()
+				if port != "" {
+					targetUrl.Host = targetUrl.Host + ":" + port
+				}
+				r.URL = targetUrl
+				r.Host = targetUrl.Host
+				httpProxy := proxy.NewUpgradeAwareHandler(targetUrl, nil, false, false, er)
+				httpProxy.ServeHTTP(w, r)
 			}
 		}
-		logrus.Debugf("Waiting for service %s to populate endpoints...", service.Name)
-		time.Sleep(time.Second * 2)
-		i++
 	}
-
-	http.Error(w, "timeout waiting for endpoint to be active", http.StatusGatewayTimeout)
 	return
 }
 
