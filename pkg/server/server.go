@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/gateway/types/client/gateway/v1"
 	"github.com/rancher/norman"
 	"github.com/rancher/norman/types"
+	riov1 "github.com/rancher/rio/types/apis/rio.cattle.io/v1"
 )
 
 func Config() *norman.Config {
@@ -27,8 +28,10 @@ func Config() *norman.Config {
 		Clients: []norman.ClientFactory{
 			v1.Factory,
 			appsv1.Factory,
+			riov1.Factory,
 			corev1.Factory,
 		},
+		GlobalSetup: gTypes.BuildContext,
 
 		MasterControllers: []norman.ControllerRegister{
 			gTypes.Register(gateway.Register),

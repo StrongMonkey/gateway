@@ -6,6 +6,7 @@ import (
 	appsv1 "github.com/rancher/gateway/types/apis/apps/v1beta2"
 	corev1 "github.com/rancher/gateway/types/apis/core/v1"
 	"github.com/rancher/gateway/types/apis/gateway.rio.cattle.io/v1"
+	riov1 "github.com/rancher/rio/types/apis/rio.cattle.io/v1"
 )
 
 type contextKey struct{}
@@ -14,6 +15,7 @@ type Context struct {
 	Apps    *appsv1.Clients
 	Core    *corev1.Clients
 	Gateway *v1.Clients
+	Rio     *riov1.Clients
 }
 
 func Store(ctx context.Context, c *Context) context.Context {
@@ -29,6 +31,7 @@ func NewContext(ctx context.Context) *Context {
 		Gateway: v1.ClientsFrom(ctx),
 		Apps:    appsv1.ClientsFrom(ctx),
 		Core:    corev1.ClientsFrom(ctx),
+		Rio:     riov1.ClientsFrom(ctx),
 	}
 }
 
